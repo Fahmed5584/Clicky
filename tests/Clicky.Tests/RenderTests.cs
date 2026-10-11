@@ -4,8 +4,6 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Themes.Simple;
-using Clicky.Core;
-using Clicky.Overlay;
 
 [assembly: AvaloniaTestApplication(typeof(Clicky.Tests.TestApp))]
 
@@ -20,37 +18,40 @@ public sealed class TestApp : Application
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 
-public class OverlayRenderTests
+public class RenderTests
 {
     private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     /// <summary>
-    /// Renders a two-monitor layout after typing "s" (row highlight) or "sk"/"sk1" (sub-grid) and saves PNGs for visual inspection
-    /// (set CLICKY_SNAPSHOT_DIR to keep them).
+    /// Renders two 1080p monitors for each input stage and saves PNGs for visual inspection
+    /// (set CLICKY_SNAPSHOT_DIR to keep them): nothing typed, a row ("s"), a cell ("sk")
+    /// and a partial sub-cell ("sk1"). A single monitor ("ak", 36 rows) shows the key fallback.
     /// </summary>
     [AvaloniaTheory]
-    [InlineData("s")]
-    [InlineData("sk")]
-    [InlineData("sk1")]
-    public void RendersTwoMonitorLayout(string typed)
+    [InlineData("", 2)]
+    [InlineData("s", 2)]
+    [InlineData("sk", 2)]
+    [InlineData("sk1", 2)]
+    [InlineData("ak", 1)]
+    public void Renders(string typed, int monitors)
     {
-        var layout = GridLayout.Build([new ScreenBounds(0, 0, 1920, 1080), new ScreenBounds(1920, 0, 1920, 1080)],
-            Alphabet);
+        var screens = Enumerable.Range(0, monitors).Select(i => new ScreenBounds(i * 1920, 0, 1920, 1080)).ToList();
+        var grid = Grid.Build(screens, Alphabet);
         var dir = Environment.GetEnvironmentVariable("CLICKY_SNAPSHOT_DIR") ?? Path.GetTempPath();
 
-        foreach (var monitor in layout.Monitors)
+        foreach (var monitor in grid.Monitors)
         {
             var window = new Window
             {
                 Width = 1920,
                 Height = 1080,
                 Background = new SolidColorBrush(Colors.SteelBlue),
-                Content = new GridCanvas(layout, monitor, () => typed, fontSize: 0),
+                Content = new GridView(grid, monitor, () => typed, fontSize: 0),
             };
             window.Show();
             using var frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
-            frame!.Save(Path.Combine(dir, $"clicky-{typed}-monitor{monitor.Order}.png"));
+            frame!.Save(Path.Combine(dir, $"clicky-{monitors}mon-'{typed}'-monitor{monitor.Index}.png"));
             window.Close();
         }
     }

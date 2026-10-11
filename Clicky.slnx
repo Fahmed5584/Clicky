@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Clicky/Clicky.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Clicky.Tests/Clicky.Tests.csproj" />
+  </Folder>
+</Solution>

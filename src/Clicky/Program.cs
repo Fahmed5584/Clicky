@@ -1,14 +1,15 @@
 using Avalonia;
 using Avalonia.Controls;
-using Clicky.Core;
-using Clicky.Platform;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Themes.Simple;
+using Avalonia.Threading;
 
 namespace Clicky;
 
 public static class Program
 {
     private const string Usage = """
-        clicky: press a hotkey, type a 2-character cell label, get a click there.
+        clicky: press a hotkey, type a cell label, get a click there.
 
         Usage:
           clicky             run the background daemon
@@ -17,26 +18,26 @@ public static class Program
           clicky uninstall   remove the autostart entry
         """;
 
-    internal static Config Config { get; private set; } = new();
-
     [STAThread]
     public static int Main(string[] args)
     {
         switch (args)
         {
             case []:
-                return RunDaemon(args);
+                return RunDaemon();
             case ["show"]:
-                if (SingleInstance.TrySend("show"))
+                if (Ipc.TrySend(Ipc.Show))
                     return 0;
                 Log.Error("clicky daemon is not running");
                 return 1;
             case ["install"]:
-                PlatformServices.CreateAutostart().Install(Environment.ProcessPath!);
+                using (var platform = Platform.Create())
+                    platform.InstallAutostart(Environment.ProcessPath!);
                 Console.WriteLine("autostart installed");
                 return 0;
             case ["uninstall"]:
-                PlatformServices.CreateAutostart().Uninstall();
+                using (var platform = Platform.Create())
+                    platform.UninstallAutostart();
                 Console.WriteLine("autostart removed");
                 return 0;
             case ["-h" or "--help"]:
@@ -48,26 +49,27 @@ public static class Program
         }
     }
 
-    private static int RunDaemon(string[] args)
+    private static int RunDaemon()
     {
-        if (SingleInstance.TrySend("ping"))
+        if (Ipc.TrySend(Ipc.Ping))
         {
             Log.Error("clicky is already running");
             return 1;
         }
         try
         {
-            Config = Config.Load();
+            App.Config = Config.Load();
         }
         catch (Exception e) when (e is IOException or InvalidDataException or FormatException
                                       or System.Text.Json.JsonException)
         {
-            Log.Error($"bad config {Config.DefaultPath}: {e.Message}");
+            Log.Error($"bad config {Paths.ConfigFile}: {e.Message}");
             return 1;
         }
         try
         {
-            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
+            return AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace()
+                .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
         }
         catch (Exception e)
         {
@@ -76,8 +78,45 @@ public static class Program
             return 1;
         }
     }
+}
 
-    // Also used by the Avalonia previewer.
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace();
+/// <summary>The daemon: wires the hotkey and `clicky show` to the overlay.</summary>
+public sealed class App : Application
+{
+    /// <summary>Set by <see cref="Program"/> before Avalonia constructs the app.</summary>
+    internal static Config Config { get; set; } = new();
+
+    private readonly IPlatform _platform = Platform.Create();
+    private Ipc.Server? _server;
+
+    public override void Initialize() => Styles.Add(new SimpleTheme());
+
+    public override void OnFrameworkInitializationCompleted()
+    {
+        var overlay = new Overlay(Config, _platform);
+        void Show() => Dispatcher.UIThread.Post(overlay.Show);
+
+        _server = new Ipc.Server(command =>
+        {
+            if (command == Ipc.Show)
+                Show();
+        });
+        _ = StartAsync(Show);
+
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            desktop.Exit += (_, _) =>
+            {
+                _server.Dispose();
+                _platform.Dispose();
+            };
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private async Task StartAsync(Action show)
+    {
+        if (!await _platform.RegisterHotkeyAsync(Hotkey.Parse(Config.Hotkey), show))
+            Log.Warn("global shortcut unavailable; bind `clicky show` to a key in your desktop's shortcut settings");
+        await _platform.InitializeClickAsync();
+        Log.Info("clicky running");
+    }
 }

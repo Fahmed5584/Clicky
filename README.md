@@ -75,11 +75,17 @@ Logs and the portal token are kept in `%LOCALAPPDATA%\clicky\` or `~/.local/shar
 ## Layout
 
 ```
-src/Clicky/Core/        config, hotkey parsing, grid layout, single-instance pipe
-src/Clicky/Overlay/     one transparent full-screen window per monitor
-src/Clicky/Platform/
-  Windows/              RegisterHotKey, SetCursorPos + SendInput, Run-key autostart
-  Linux/                kglobalaccel + RemoteDesktop portal (Tmds.DBus.Protocol), XDG autostart
-tests/Clicky.Tests/     xUnit + Avalonia.Headless
-tools/dbus-mock/        mock kglobalaccel + portal for testing the KDE backend without KDE
+src/Clicky/
+  Program.cs          CLI commands and the daemon (Avalonia app)
+  Config.cs           config.json, file locations, logging
+  Hotkey.cs           hotkey parsing and its KDE/Windows key codes
+  Grid.cs             labels: monitors, rows, columns, sub-cells, typing rules
+  Overlay.cs          one transparent full-screen window per monitor; keyboard input
+  GridView.cs         drawing the grid
+  Ipc.cs              single instance and `clicky show` (named pipe)
+  Platform.cs         IPlatform: the OS-specific parts
+  KdePlatform.cs      kglobalaccel + RemoteDesktop portal over D-Bus, XDG autostart
+  WindowsPlatform.cs  RegisterHotKey, SetCursorPos + SendInput, Run-key autostart
+tests/Clicky.Tests/   xUnit + Avalonia.Headless
+tools/dbus-mock/      mock kglobalaccel + portal for testing KdePlatform without KDE
 ```
