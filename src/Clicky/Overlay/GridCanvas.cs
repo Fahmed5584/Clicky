@@ -12,10 +12,11 @@ public sealed class GridCanvas(GridLayout layout, MonitorGrid grid, Func<string>
     private static readonly IBrush Wash = new SolidColorBrush(Color.FromArgb(110, 0, 0, 0));
     private static readonly IBrush RowFill = new SolidColorBrush(Color.FromArgb(70, 255, 196, 0));
     private static readonly IPen GridPen = new Pen(new SolidColorBrush(Color.FromArgb(35, 255, 255, 255)), 1);
-    private static readonly IBrush Label = new SolidColorBrush(Color.FromArgb(230, 255, 255, 255));
-    private static readonly IBrush LabelDim = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
+    private static readonly IBrush Label = new SolidColorBrush(Color.FromArgb(128, 255, 255, 255));
+    private static readonly IBrush LabelDim = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
     private static readonly IBrush Accent = new SolidColorBrush(Color.FromRgb(255, 210, 60));
     private static readonly IBrush Shadow = new SolidColorBrush(Color.FromArgb(200, 0, 0, 0));
+    private static readonly IBrush LabelShadow = new SolidColorBrush(Color.FromArgb(90, 0, 0, 0));
     private static readonly IBrush CellFill = new SolidColorBrush(Color.FromArgb(220, 0, 0, 0));
     private static readonly IPen CellPen = new Pen(Accent, 2);
     private static readonly IPen SubPen = new Pen(new SolidColorBrush(Color.FromArgb(140, 255, 210, 60)), 1);
@@ -66,7 +67,7 @@ public sealed class GridCanvas(GridLayout layout, MonitorGrid grid, Func<string>
                 string label = string.Concat(grid.Rows[r], grid.Cols[c]).ToUpperInvariant();
                 var cell = new Rect(c * cellW, r * cellH, cellW, cellH);
                 if (brush != LabelDim)
-                    DrawCentered(ctx, label, size, Shadow, cell.Translate(new Vector(1, 1)));
+                    DrawCentered(ctx, label, size, brush == Accent ? Shadow : LabelShadow, cell.Translate(new Vector(1, 1)));
                 DrawCentered(ctx, label, size, brush, cell);
             }
         }
@@ -105,11 +106,11 @@ public sealed class GridCanvas(GridLayout layout, MonitorGrid grid, Func<string>
 
     private static double FitFontSize(double cellW, double cellH)
     {
-        double size = Math.Max(Math.Floor(cellH * 0.6), 6);
+        double size = Math.Max(Math.Floor(cellH * 0.45), 6);
         while (size > 6)
         {
             var ft = new FormattedText("WW", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Font, size, Label);
-            if (ft.Width <= cellW * 0.85)
+            if (ft.Width <= cellW * 0.65)
                 break;
             size--;
         }
