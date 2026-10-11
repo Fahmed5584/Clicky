@@ -3,8 +3,9 @@
 The README covers what the app does, how to build and use it, and the code layout. This file holds what the README doesn't: why things are the way they are, the traps, and the current status.
 
 ## Status (2026-10-11)
-- Builds with no warnings and passes 47 tests. **The user tested it on KDE Plasma 6 Wayland: the portal, the grid, focus and clicks all work as expected.** Windows is still untested.
-- Added after that test: a 3×3 sub-grid (`1`–`9`) inside the chosen cell to fine-tune the click; `Enter`/`Space` clicks the cell centre. Labels are now 3 keys (`GridLayout.Resolve` accepts 2 or 3 chars).
+- Builds with no warnings and passes 57 tests. **The user tested it on KDE Plasma 6 Wayland: the portal, the grid, focus and clicks all work as expected.** Windows is still untested.
+- Added after that test, at the user's request: a 4×4 sub-grid inside the chosen cell, typed as two digits `00`–`15`, so a full label is 4 keys (`GridLayout.Resolve` accepts 2 or 4 chars). `Enter`/`Space` clicks the cell centre. The user tried 3×3 (`1`–`9`, too coarse) and 5×5 (`00`–`24`, labels didn't fit in the cell) before settling on 4×4. `GridLayout.SubDivisions` sets the size.
+- **Overlay legibility (user feedback):** labels are 50% opacity and small, the screen tint is light, and nothing may cover the chosen cell. Sub-cell labels go inside the cell when they fit at 8 px or larger (`GridCanvas.MinInCellFont`); otherwise the cell gets lines only and a magnified key beside it carries the labels.
 - The .NET SDK may not be installed: `sudo pacman -S dotnet-sdk`.
 - Not a git repo yet.
 

@@ -95,23 +95,36 @@ public class GridLayoutTests
         Assert.Throws<ArgumentException>(() => GridLayout.Build([Hd, Hd, Hd], "ab"));
 
     [Theory]
-    [InlineData('1', 0, 0)]
-    [InlineData('5', 1, 1)]
-    [InlineData('6', 2, 1)]
-    [InlineData('9', 2, 2)]
-    public void SubCellDigitsRefineWithinTheCell(char digit, int subCol, int subRow)
+    [InlineData("00", 0, 0)]
+    [InlineData("03", 3, 0)]
+    [InlineData("04", 0, 1)]
+    [InlineData("10", 2, 2)]
+    [InlineData("15", 3, 3)]
+    public void SubCellsRefineWithinTheCell(string sub, int subCol, int subRow)
     {
         var layout = GridLayout.Build([Hd], Alphabet);
         var cell = layout.Resolve("ck")!.Value;
-        var sub = layout.Resolve("ck" + digit)!.Value;
-        Assert.Equal((cell.Col + (subCol + 0.5) / 3) / 36, sub.Fx, 9);
-        Assert.Equal((cell.Row + (subRow + 0.5) / 3) / 36, sub.Fy, 9);
+        var target = layout.Resolve("ck" + sub)!.Value;
+        Assert.Equal((cell.Col + (subCol + 0.5) / 4) / 36, target.Fx, 9);
+        Assert.Equal((cell.Row + (subRow + 0.5) / 4) / 36, target.Fy, 9);
     }
 
     [Theory]
-    [InlineData("ck0")]
-    [InlineData("cka")]
-    [InlineData("ck55")]
+    [InlineData("ck16")]
+    [InlineData("ck99")]
+    [InlineData("ck1")]
+    [InlineData("ck1a")]
+    [InlineData("ck123")]
     public void InvalidSubCellsDoNotResolve(string label) =>
         Assert.Null(GridLayout.Build([Hd], Alphabet).Resolve(label));
+
+    [Theory]
+    [InlineData("0", true)]
+    [InlineData("1", true)]
+    [InlineData("2", false)]
+    [InlineData("09", true)]
+    [InlineData("15", true)]
+    [InlineData("16", false)]
+    public void SubPrefixes(string digits, bool expected) =>
+        Assert.Equal(expected, GridLayout.IsSubPrefix(digits));
 }

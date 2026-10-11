@@ -25,12 +25,13 @@ public class OverlayRenderTests
     private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     /// <summary>
-    /// Renders a two-monitor layout after typing "s" (row highlight) or "sk" (sub-grid) and saves PNGs for visual inspection
+    /// Renders a two-monitor layout after typing "s" (row highlight) or "sk"/"sk1" (sub-grid) and saves PNGs for visual inspection
     /// (set CLICKY_SNAPSHOT_DIR to keep them).
     /// </summary>
     [AvaloniaTheory]
     [InlineData("s")]
     [InlineData("sk")]
+    [InlineData("sk1")]
     public void RendersTwoMonitorLayout(string typed)
     {
         var layout = GridLayout.Build([new ScreenBounds(0, 0, 1920, 1080), new ScreenBounds(1920, 0, 1920, 1080)],

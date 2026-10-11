@@ -71,24 +71,28 @@ public sealed class GridLayout
     }
 
     /// <summary>Side length of the sub-grid shown inside a chosen cell.</summary>
-    public const int SubDivisions = 3;
+    public const int SubDivisions = 4;
+
+    /// <summary>Characters in a sub-cell label ("00" to "15").</summary>
+    public const int SubLabelLength = 2;
 
     /// <summary>
-    /// Resolves a two-character label to its cell centre, or a label plus a sub-cell digit
-    /// ('1' top-left to '9' bottom-right, in reading order) to that sub-cell's centre.
+    /// Resolves a two-character label to its cell centre, or a label plus a two-digit
+    /// sub-cell number ("00" top-left to "15" bottom-right, in reading order) to that
+    /// sub-cell's centre.
     /// </summary>
     public CellTarget? Resolve(string label)
     {
-        if (label.Length is not (2 or 3) || FindRow(label[0]) is not var (monitor, row))
+        if (label.Length is not (2 or 2 + SubLabelLength) || FindRow(label[0]) is not var (monitor, row))
             return null;
         int col = monitor.Cols.IndexOf(char.ToLowerInvariant(label[1]));
         if (col < 0)
             return null;
 
         double subX = 0.5, subY = 0.5;
-        if (label.Length == 3)
+        if (label.Length > 2)
         {
-            if (SubCell(label[2]) is not int sub)
+            if (SubCell(label[2..]) is not int sub)
                 return null;
             subX = (sub % SubDivisions + 0.5) / SubDivisions;
             subY = (sub / SubDivisions + 0.5) / SubDivisions;
@@ -98,7 +102,17 @@ public sealed class GridLayout
             (row + subY) / monitor.Rows.Length);
     }
 
-    /// <summary>Zero-based sub-cell index for '1'..'9', or null.</summary>
-    public static int? SubCell(char c) =>
-        c is >= '1' and <= '9' ? c - '1' : null;
+    /// <summary>Sub-cell index for a two-digit label "00".."15", or null.</summary>
+    public static int? SubCell(string digits) =>
+        digits.Length == SubLabelLength && digits.All(char.IsAsciiDigit)
+        && int.Parse(digits, System.Globalization.CultureInfo.InvariantCulture) is var n
+        && n < SubDivisions * SubDivisions ? n : null;
+
+    /// <summary>Two-digit label for sub-cell <paramref name="index"/>.</summary>
+    public static string SubLabel(int index) =>
+        index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>True if <paramref name="digits"/> is the start of some sub-cell label.</summary>
+    public static bool IsSubPrefix(string digits) =>
+        Enumerable.Range(0, SubDivisions * SubDivisions).Any(i => SubLabel(i).StartsWith(digits, StringComparison.Ordinal));
 }

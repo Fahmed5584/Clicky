@@ -22,6 +22,10 @@ public sealed class GridCanvas(GridLayout layout, MonitorGrid grid, Func<string>
     private static readonly IPen SubPen = new Pen(new SolidColorBrush(Color.FromArgb(110, 255, 210, 60)), 1);
     private static readonly IBrush SubDigit = new SolidColorBrush(Color.FromArgb(200, 255, 210, 60));
     private static readonly IBrush SubShadow = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0));
+    private static readonly IBrush KeyFill = new SolidColorBrush(Color.FromArgb(200, 20, 20, 20));
+
+    /// <summary>Size of one square in the magnified sub-grid key, in pixels.</summary>
+    private const double KeySquare = 28;
 
     private static readonly Typeface Font = new(
         new FontFamily("Consolas, DejaVu Sans Mono, Noto Sans Mono, Liberation Mono, monospace"),
@@ -38,10 +42,10 @@ public sealed class GridCanvas(GridLayout layout, MonitorGrid grid, Func<string>
         // After the second keystroke only the chosen cell's sub-grid is drawn, so the area
         // being fine-tuned stays visible.
         string text = typed();
-        if (text.Length == 2 && layout.Resolve(text) is { } t)
+        if (text.Length >= 2 && layout.Resolve(text[..2]) is { } t)
         {
             if (t.Monitor == grid)
-                DrawSubGrid(ctx, new Rect(t.Col * cellW, t.Row * cellH, cellW, cellH));
+                DrawSubGrid(ctx, new Rect(t.Col * cellW, t.Row * cellH, cellW, cellH), text[2..], new Rect(0, 0, width, height));
             return;
         }
 
@@ -80,34 +84,70 @@ public sealed class GridCanvas(GridLayout layout, MonitorGrid grid, Func<string>
         }
     }
 
+    /// <summary>Smallest sub-cell label font drawn inside the cell; below this a key is used.</summary>
+    private const double MinInCellFont = 8;
+
     /// <summary>
-    /// Outlines the cell and its 3x3 sub-cells with no fill. Each digit sits in its sub-cell's
-    /// top-left corner and a dot marks the click point, so the content underneath stays visible.
+    /// Splits the chosen cell into sub-cells labelled "00".."15" in reading order. Labels go
+    /// inside the cell when they fit at a readable size; otherwise the cell gets lines only
+    /// and a magnified key beside it carries the labels. Once the first digit is typed,
+    /// sub-cells that no longer match are dimmed.
     /// </summary>
-    private static void DrawSubGrid(DrawingContext ctx, Rect cell)
+    private static void DrawSubGrid(DrawingContext ctx, Rect cell, string typedSub, Rect screen)
     {
         const int n = GridLayout.SubDivisions;
-        double subW = cell.Width / n, subH = cell.Height / n;
-        for (int i = 1; i < n; i++)
-        {
-            ctx.DrawLine(SubPen, new Point(cell.X + i * subW, cell.Y), new Point(cell.X + i * subW, cell.Bottom));
-            ctx.DrawLine(SubPen, new Point(cell.X, cell.Y + i * subH), new Point(cell.Right, cell.Y + i * subH));
-        }
+        DrawLattice(ctx, cell, n);
         ctx.DrawRectangle(null, CellShadowPen, cell.Inflate(2));
         ctx.DrawRectangle(null, CellPen, cell.Inflate(1));
 
-        double size = Math.Max(Math.Floor(Math.Min(subW, subH) * 0.5), 7);
+        double subW = cell.Width / n, subH = cell.Height / n;
+        double inCell = FitFontSize(subW, subH, widthShare: 0.9, heightShare: 0.7, min: 1);
+        if (inCell >= MinInCellFont)
+        {
+            DrawSubLabels(ctx, cell, typedSub, inCell, shadow: true);
+            return;
+        }
+
+        // Put the key to the right of the cell, or to the left if it would run off-screen,
+        // vertically centred on the cell and kept on-screen.
+        const double gap = 10;
+        double side = KeySquare * n;
+        double x = cell.Right + gap + side <= screen.Right ? cell.Right + gap : cell.X - gap - side;
+        double y = Math.Clamp(cell.Center.Y - side / 2, screen.Y, screen.Bottom - side);
+        var key = new Rect(x, y, side, side);
+
+        ctx.FillRectangle(KeyFill, key);
+        DrawLattice(ctx, key, n);
+        ctx.DrawRectangle(null, CellPen, key);
+        DrawSubLabels(ctx, key, typedSub, FitFontSize(KeySquare, KeySquare, widthShare: 0.8, heightShare: 0.6), shadow: false);
+    }
+
+    private static void DrawSubLabels(DrawingContext ctx, Rect area, string typedSub, double size, bool shadow)
+    {
+        const int n = GridLayout.SubDivisions;
+        double w = area.Width / n, h = area.Height / n;
         for (int i = 0; i < n * n; i++)
         {
-            var sub = new Rect(cell.X + i % n * subW, cell.Y + i / n * subH, subW, subH);
-            string digit = (i + 1).ToString(CultureInfo.InvariantCulture);
-            var ft = new FormattedText(digit, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Font, size, SubDigit);
-            var origin = new Point(sub.X + 1.5, sub.Y);
-            ctx.DrawText(new FormattedText(digit, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Font, size, SubShadow),
-                origin + new Vector(1, 1));
-            ctx.DrawText(ft, origin);
-            ctx.DrawEllipse(SubShadow, null, sub.Center, 2, 2);
-            ctx.DrawEllipse(SubDigit, null, sub.Center, 1.2, 1.2);
+            var sub = new Rect(area.X + i % n * w, area.Y + i / n * h, w, h);
+            string label = GridLayout.SubLabel(i);
+            if (!label.StartsWith(typedSub, StringComparison.Ordinal))
+            {
+                DrawCentered(ctx, label, size, LabelDim, sub);
+                continue;
+            }
+            if (shadow)
+                DrawCentered(ctx, label, size, SubShadow, sub.Translate(new Vector(1, 1)));
+            DrawCentered(ctx, label, size, SubDigit, sub);
+        }
+    }
+
+    private static void DrawLattice(DrawingContext ctx, Rect area, int n)
+    {
+        double w = area.Width / n, h = area.Height / n;
+        for (int i = 1; i < n; i++)
+        {
+            ctx.DrawLine(SubPen, new Point(area.X + i * w, area.Y), new Point(area.X + i * w, area.Bottom));
+            ctx.DrawLine(SubPen, new Point(area.X, area.Y + i * h), new Point(area.Right, area.Y + i * h));
         }
     }
 
@@ -117,13 +157,14 @@ public sealed class GridCanvas(GridLayout layout, MonitorGrid grid, Func<string>
         ctx.DrawText(ft, new Point(cell.X + (cell.Width - ft.Width) / 2, cell.Y + (cell.Height - ft.Height) / 2));
     }
 
-    private static double FitFontSize(double cellW, double cellH)
+    private static double FitFontSize(double cellW, double cellH,
+        double widthShare = 0.65, double heightShare = 0.45, double min = 6)
     {
-        double size = Math.Max(Math.Floor(cellH * 0.45), 6);
-        while (size > 6)
+        double size = Math.Max(Math.Floor(cellH * heightShare), min);
+        while (size > min)
         {
             var ft = new FormattedText("WW", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Font, size, Label);
-            if (ft.Width <= cellW * 0.65)
+            if (ft.Width <= cellW * widthShare)
                 break;
             size--;
         }

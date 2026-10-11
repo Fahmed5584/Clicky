@@ -69,9 +69,9 @@ public sealed class OverlayController(Config config, IPointerService pointer)
                     Redraw();
                 }
                 return;
-            case Key.Enter or Key.Space when Typed.Length == 2:
+            case Key.Enter or Key.Space when Typed.Length >= 2:
                 // Skip the sub-grid and click the cell centre.
-                Click(Typed);
+                Click(Typed[..2]);
                 return;
         }
 
@@ -81,13 +81,13 @@ public sealed class OverlayController(Config config, IPointerService pointer)
         {
             0 => _layout.FindRow(ch) is not null,
             1 => _layout.Alphabet.Contains(ch),
-            _ => GridLayout.SubCell(ch) is not null,
+            _ => GridLayout.IsSubPrefix(Typed[2..] + ch),
         };
         if (!valid)
             return;
 
         Typed += ch;
-        if (Typed.Length < 3)
+        if (Typed.Length < 2 + GridLayout.SubLabelLength)
             Redraw();
         else
             Click(Typed);

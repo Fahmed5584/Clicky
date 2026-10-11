@@ -1,6 +1,6 @@
 # clicky
 
-Press a hotkey (default **Ctrl+Alt+Shift+M**) and every monitor gets a labelled grid. Type a cell's two characters, then a digit `1`–`9` to pick a spot inside that cell, and clicky moves the mouse there and left-clicks.
+Press a hotkey (default **Ctrl+Alt+Shift+M**) and every monitor gets a labelled grid. Type a cell's two characters, then a two-digit number `00`–`15` to pick a spot inside that cell, and clicky moves the mouse there and left-clicks.
 
 It runs on **Windows** and **KDE Plasma 6 (Wayland)** and is written in .NET 10 with Avalonia.
 
@@ -16,7 +16,7 @@ It runs on **Windows** and **KDE Plasma 6 (Wayland)** and is written in .NET 10 
 | 3 | `a`–`l`, `m`–`x`, `y`–`9`: 12×36 each |
 
 - After you type the first character, its row lights up and everything else dims.
-- After the second character, the chosen cell shows a 3×3 sub-grid numbered `1`–`9` in reading order (`1` top-left, `5` centre, `9` bottom-right). Type a digit to click the centre of that sub-cell, or press `Enter`/`Space` to click the centre of the whole cell.
+- After the second character, the chosen cell is split into a 4×4 grid numbered `00`–`15` in reading order (`00` top-left, `15` bottom-right). Type the two digits to click the centre of that square, or press `Enter`/`Space` to click the centre of the whole cell. If the cell is too small for readable numbers, it gets lines only and a magnified numbered key appears beside it.
 - `Backspace` undoes the last character.
 - `Esc` or a mouse click cancels.
 
