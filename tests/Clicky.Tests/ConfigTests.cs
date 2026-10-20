@@ -28,6 +28,7 @@ public class ConfigTests : IDisposable
         Assert.Equal("Meta+G", config.Hotkey);
         Assert.Equal("abcd", config.Alphabet);
         Assert.Equal(60, config.ClickDelayMs);
+        Assert.Equal((0, 0, 4), (config.Columns, config.Rows, config.SubGridSize));
     }
 
     [Theory]
@@ -35,6 +36,11 @@ public class ConfigTests : IDisposable
     [InlineData("""{ "alphabet": "a" }""")]
     [InlineData("""{ "fontSize": -1 }""")]
     [InlineData("""{ "clickDelayMs": -1 }""")]
+    [InlineData("""{ "columns": -1 }""")]
+    [InlineData("""{ "columns": 37 }""")]
+    [InlineData("""{ "rows": 37 }""")]
+    [InlineData("""{ "subGridSize": 1 }""")]
+    [InlineData("""{ "subGridSize": 11 }""")]
     public void RejectsInvalidValues(string json)
     {
         File.WriteAllText(_path, json);

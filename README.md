@@ -1,13 +1,13 @@
 # clicky
 
-Press a hotkey (default **Ctrl+Alt+Shift+M**) and every monitor gets a labelled grid. Type a cell's two characters, then a two-digit number `00`–`15` to pick a spot inside that cell, and clicky moves the mouse there and left-clicks.
+Press a hotkey (default **Ctrl+Alt+Shift+M**) and every monitor gets a labelled grid. Type a cell's two characters, then a two-digit number (`00`–`15` by default) to pick a spot inside that cell, and clicky moves the mouse there and left-clicks.
 
 It runs on **Windows** and **KDE Plasma 6 (Wayland)** and is written in .NET 10 with Avalonia.
 
 ## How labels work
 
 - The first character picks the row and the second picks the column.
-- Labels are unique across monitors. The 36 row characters (`a`–`z`, `0`–`9`) are split between monitors, ordered left to right and then top to bottom. Every monitor keeps all 36 columns.
+- Labels are unique across monitors. By default the 36 row characters (`a`–`z`, `0`–`9`) are split between monitors, ordered left to right and then top to bottom, and every monitor keeps all 36 columns. The `columns`, `rows` and `subGridSize` settings change this (see [Config](#config)).
 
 | Monitors | Rows on each monitor |
 |---|---|
@@ -16,7 +16,7 @@ It runs on **Windows** and **KDE Plasma 6 (Wayland)** and is written in .NET 10 
 | 3 | `a`–`l`, `m`–`x`, `y`–`9`: 12×36 each |
 
 - After you type the first character, its row lights up and everything else dims.
-- After the second character, the chosen cell is split into a 4×4 grid numbered `00`–`15` in reading order (`00` top-left, `15` bottom-right). Type the two digits to click the centre of that square, or press `Enter`/`Space` to click the centre of the whole cell. If the cell is too small for readable numbers, it gets lines only and a magnified numbered key appears beside it.
+- After the second character, the chosen cell is split into a 4×4 grid (or `subGridSize`) numbered `00`–`15` in reading order (`00` top-left, `15` bottom-right). Type the two digits to click the centre of that square, or press `Enter`/`Space` to click the centre of the whole cell. If the cell is too small for readable numbers, it gets lines only and a magnified numbered key appears beside it.
 - `Backspace` undoes the last character.
 - `Esc` or a mouse click cancels.
 
@@ -60,13 +60,21 @@ The config lives in `%APPDATA%\clicky\config.json` (Windows) or `~/.config/click
 {
   "hotkey": "Ctrl+Alt+Shift+M",
   "alphabet": "abcdefghijklmnopqrstuvwxyz0123456789",
+  "columns": 0,
+  "rows": 0,
+  "subGridSize": 4,
   "fontSize": 0,
   "clickDelayMs": 60
 }
 ```
 
 - **hotkey:** modifiers `Ctrl`, `Alt`, `Shift` and `Meta`/`Win`, plus one key: `A`–`Z`, `0`–`9`, `F1`–`F24` or `Space`. Neither OS's shortcut API tells left Shift from right Shift.
-- **alphabet:** the row and column characters. Its length sets the grid size.
+- **alphabet:** the row and column characters. With `columns` and `rows` at `0`, its length sets the grid size.
+- **columns:** columns on each monitor, using the first that many alphabet characters. `0` uses the whole alphabet.
+- **rows:** rows on each monitor. Each monitor takes the next that many alphabet characters, in monitor order, so `rows` × the number of monitors can't be more than the alphabet length. `0` splits the whole alphabet between the monitors.
+- **subGridSize:** the chosen cell is split into this many × this many squares, from `2` to `10`. The numbers always have two digits (`00`–`99`).
+
+Bigger cells make the labels easier to read. Square cells use the space best: for example, use `"columns": 32, "rows": 18` on a 1920×1080 screen, which gives 60×60-pixel cells instead of 53×30. With a smaller grid, it helps to reorder `alphabet` so the keys that are easiest to reach come first.
 - **fontSize:** label size in pixels; `0` fits the label to the cell.
 - **clickDelayMs:** how long to wait after hiding the grid before clicking.
 

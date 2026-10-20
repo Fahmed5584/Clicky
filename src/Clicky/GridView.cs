@@ -82,13 +82,13 @@ public sealed class GridView(Grid grid, GridMonitor monitor, Func<string> typed,
     /// stays visible. Labels go inside the cell when they are readable there, otherwise in a
     /// magnified key beside it. Labels that no longer match the typed digits are dimmed.
     /// </summary>
-    private static void DrawSubGrid(DrawingContext ctx, Rect cell, string typedSub, Rect screen)
+    private void DrawSubGrid(DrawingContext ctx, Rect cell, string typedSub, Rect screen)
     {
-        DrawLines(ctx, SubPen, cell, Grid.SubSize, Grid.SubSize);
+        DrawLines(ctx, SubPen, cell, grid.SubSize, grid.SubSize);
         ctx.DrawRectangle(null, CellShadowPen, cell.Inflate(2));
         ctx.DrawRectangle(null, CellPen, cell.Inflate(1));
 
-        double inCellSize = FitFont(cell.Width / Grid.SubSize, cell.Height / Grid.SubSize,
+        double inCellSize = FitFont(cell.Width / grid.SubSize, cell.Height / grid.SubSize,
             widthShare: 0.9, heightShare: 0.7, min: 0);
         if (inCellSize >= MinSubFont)
         {
@@ -99,23 +99,23 @@ public sealed class GridView(Grid grid, GridMonitor monitor, Func<string> typed,
         // The key goes right of the cell (left if that would run off-screen), vertically
         // centred on the cell and kept on-screen.
         const double gap = 10;
-        double side = KeySquare * Grid.SubSize;
+        double side = KeySquare * grid.SubSize;
         double x = cell.Right + gap + side <= screen.Right ? cell.Right + gap : cell.X - gap - side;
         double y = Math.Clamp(cell.Center.Y - side / 2, screen.Y, screen.Bottom - side);
         var key = new Rect(x, y, side, side);
         ctx.FillRectangle(KeyFill, key);
-        DrawLines(ctx, SubPen, key, Grid.SubSize, Grid.SubSize);
+        DrawLines(ctx, SubPen, key, grid.SubSize, grid.SubSize);
         ctx.DrawRectangle(null, CellPen, key);
         DrawSubLabels(ctx, key, typedSub, FitFont(KeySquare, KeySquare, widthShare: 0.8, heightShare: 0.6), shadow: null);
     }
 
-    private static void DrawSubLabels(DrawingContext ctx, Rect area, string typedSub, double size, IBrush? shadow)
+    private void DrawSubLabels(DrawingContext ctx, Rect area, string typedSub, double size, IBrush? shadow)
     {
-        double w = area.Width / Grid.SubSize, h = area.Height / Grid.SubSize;
-        for (int i = 0; i < Grid.SubSize * Grid.SubSize; i++)
+        double w = area.Width / grid.SubSize, h = area.Height / grid.SubSize;
+        for (int i = 0; i < grid.SubSize * grid.SubSize; i++)
         {
             string label = Grid.SubLabel(i);
-            var sub = new Rect(area.X + i % Grid.SubSize * w, area.Y + i / Grid.SubSize * h, w, h);
+            var sub = new Rect(area.X + i % grid.SubSize * w, area.Y + i / grid.SubSize * h, w, h);
             if (label.StartsWith(typedSub, StringComparison.Ordinal))
                 DrawLabel(ctx, label, size, SubLabel, shadow, sub);
             else

@@ -30,6 +30,15 @@ public sealed class Config
     /// <summary>Row and column characters. Rows are split across monitors; every monitor gets all columns.</summary>
     public string Alphabet { get; set; } = "abcdefghijklmnopqrstuvwxyz0123456789";
 
+    /// <summary>Columns per monitor, taken from the start of the alphabet; 0 uses the whole alphabet.</summary>
+    public int Columns { get; set; }
+
+    /// <summary>Rows per monitor; 0 splits the whole alphabet between the monitors.</summary>
+    public int Rows { get; set; }
+
+    /// <summary>The chosen cell is split into SubGridSize x SubGridSize sub-cells (2..10).</summary>
+    public int SubGridSize { get; set; } = Grid.DefaultSubSize;
+
     /// <summary>Label size in pixels; 0 fits the label to the cell.</summary>
     public double FontSize { get; set; }
 
@@ -68,6 +77,12 @@ public sealed class Config
         config.Alphabet = config.Alphabet.ToLowerInvariant();
         if (config.Alphabet.Length < 2 || config.Alphabet.Distinct().Count() != config.Alphabet.Length)
             throw new InvalidDataException("alphabet must have at least 2 characters and no duplicates");
+        if (config.Columns < 0 || config.Columns > config.Alphabet.Length)
+            throw new InvalidDataException($"columns must be between 0 and the alphabet length ({config.Alphabet.Length})");
+        if (config.Rows < 0 || config.Rows > config.Alphabet.Length)
+            throw new InvalidDataException($"rows must be between 0 and the alphabet length ({config.Alphabet.Length})");
+        if (config.SubGridSize < 2 || config.SubGridSize > Grid.MaxSubSize)
+            throw new InvalidDataException($"subGridSize must be between 2 and {Grid.MaxSubSize}");
         if (config.FontSize < 0)
             throw new InvalidDataException("fontSize must be >= 0");
         if (config.ClickDelayMs < 0)

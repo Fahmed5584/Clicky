@@ -26,7 +26,7 @@ public sealed class Overlay(Config config, IPlatform platform)
         {
             _grid = Grid.Build(
                 screens.Select(s => new ScreenBounds(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height)).ToList(),
-                config.Alphabet);
+                config.Alphabet, config.Columns, config.Rows, config.SubGridSize);
         }
         catch (ArgumentException e)
         {
