@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Avalonia.Controls;
 using Microsoft.Win32;
 
 namespace Clicky;
@@ -11,6 +13,10 @@ namespace Clicky;
 /// <remarks>
 /// Avalonia makes the process per-monitor DPI aware, so screen bounds and cursor
 /// coordinates are both physical pixels.
+/// <para>
+/// UIPI drops injected input while an elevated window is in the foreground, so the overlay
+/// stays focused (but invisible and click-through) until the click has been sent.
+/// </para>
 /// </remarks>
 [SupportedOSPlatform("windows")]
 public sealed class WindowsPlatform : IPlatform
@@ -61,8 +67,33 @@ public sealed class WindowsPlatform : IPlatform
             new() { type = Native.INPUT_MOUSE, mi = { dwFlags = Native.MOUSEEVENTF_LEFTUP } },
         ];
         if (Native.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Native.INPUT>()) != inputs.Length)
-            Log.Error($"SendInput failed (error {Marshal.GetLastWin32Error()})");
+            Log.Error($"SendInput failed (error {Marshal.GetLastWin32Error()}); foreground app: {ForegroundProcess()} " +
+                      "(input to elevated apps is blocked unless clicky runs as admin)");
         return Task.CompletedTask;
+    }
+
+    public bool MakeClickThrough(Window window)
+    {
+        if (window.TryGetPlatformHandle()?.Handle is not { } hwnd || hwnd == IntPtr.Zero)
+            return false;
+        long style = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
+        Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE,
+            new IntPtr(style | Native.WS_EX_LAYERED | Native.WS_EX_TRANSPARENT));
+        return true;
+    }
+
+    private static string ForegroundProcess()
+    {
+        Native.GetWindowThreadProcessId(Native.GetForegroundWindow(), out uint pid);
+        try
+        {
+            using var process = Process.GetProcessById((int)pid);
+            return process.ProcessName;
+        }
+        catch (ArgumentException)
+        {
+            return $"pid {pid}";
+        }
     }
 
     public void InstallAutostart(string executable)
@@ -90,6 +121,9 @@ public sealed class WindowsPlatform : IPlatform
         public const uint INPUT_MOUSE = 0;
         public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        public const int GWL_EXSTYLE = -20;
+        public const long WS_EX_LAYERED = 0x00080000;
+        public const long WS_EX_TRANSPARENT = 0x00000020;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct MSG
@@ -144,5 +178,18 @@ public sealed class WindowsPlatform : IPlatform
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        // The *Ptr variants only exist as exports on 64-bit Windows, which is all we build for.
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+        public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+        public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     }
 }

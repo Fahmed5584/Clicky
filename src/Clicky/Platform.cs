@@ -13,6 +13,10 @@ public interface IPlatform : IDisposable
     /// <summary>Moves the pointer to <paramref name="target"/> and left-clicks. Errors are logged, not thrown.</summary>
     Task ClickAsync(Target target, int monitorCount);
 
+    /// <summary>Lets clicks pass through <paramref name="window"/> to whatever is underneath, if the platform can.</summary>
+    /// <returns>True if the window may stay open (and focused) while clicking; false means close it first.</returns>
+    bool MakeClickThrough(Avalonia.Controls.Window window);
+
     void InstallAutostart(string executable);
     void UninstallAutostart();
 }

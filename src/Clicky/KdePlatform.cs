@@ -103,6 +103,9 @@ public sealed class KdePlatform : IPlatform
         }
     }
 
+    // The portal injects input regardless of focus, so the overlay can simply close first.
+    public bool MakeClickThrough(Avalonia.Controls.Window window) => false;
+
     public async Task ClickAsync(Target target, int monitorCount)
     {
         await _portalGate.WaitAsync();

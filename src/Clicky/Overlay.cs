@@ -83,15 +83,44 @@ public sealed class Overlay(Config config, IPlatform platform)
     {
         var target = _grid!.Resolve(label);
         int monitorCount = _grid.Monitors.Count;
-        Close();
-        if (target is { } t)
-            _ = ClickAsync(t, monitorCount);
+        if (target is not { } t)
+        {
+            Close();
+            return;
+        }
+
+        // Where the platform allows it, the windows stay open (blank and click-through) until the
+        // click is sent, so clicky keeps the foreground; see WindowsPlatform. Otherwise close now.
+        var windows = _windows.ToList();
+        _windows.Clear();
+        _grid = null;
+        Typed = "";
+        if (windows.All(platform.MakeClickThrough))
+        {
+            foreach (var w in windows)
+                w.Content = null;
+        }
+        else
+        {
+            foreach (var w in windows)
+                w.Close();
+            windows.Clear();
+        }
+        _ = ClickAsync(t, monitorCount, windows);
     }
 
-    private async Task ClickAsync(Target target, int monitorCount)
+    private async Task ClickAsync(Target target, int monitorCount, List<OverlayWindow> windows)
     {
-        await Task.Delay(config.ClickDelayMs); // let the overlay disappear first
-        await platform.ClickAsync(target, monitorCount);
+        await Task.Delay(config.ClickDelayMs); // let the overlay disappear (or go blank) first
+        try
+        {
+            await platform.ClickAsync(target, monitorCount);
+        }
+        finally
+        {
+            foreach (var w in windows)
+                w.Close();
+        }
     }
 
     private static char? KeyChar(KeyEventArgs e)
