@@ -82,6 +82,63 @@ public class GridTests
     public void RejectsMoreMonitorsThanAlphabetCharacters() =>
         Assert.Throws<ArgumentException>(() => Grid.Build([Hd, Hd, Hd], "ab"));
 
+    [Fact]
+    public void CustomCountsTakeAlphabetPrefixes()
+    {
+        var grid = Grid.Build([Hd], Alphabet, columns: 32, rows: 18);
+        var m = grid.Monitors[0];
+        Assert.Equal(Alphabet[..32], m.Cols);
+        Assert.Equal(Alphabet[..18], m.Rows);
+        var (x, y) = Pixel(grid, "aa");
+        Assert.Equal(30, x, 3);
+        Assert.Equal(30, y, 3);
+        Assert.Null(grid.Resolve("a6")); // column 33 is outside the grid
+        Assert.False(grid.CanAppend("a", '6'));
+        Assert.Null(grid.Resolve("sa")); // row 19 too
+    }
+
+    [Fact]
+    public void CustomRowsAreTakenInMonitorOrder()
+    {
+        var right = new ScreenBounds(1920, 0, 2560, 1440);
+        var grid = Grid.Build([right, Hd], Alphabet, columns: 20, rows: 12);
+        Assert.Equal("abcdefghijkl", grid.Monitors[0].Rows);
+        Assert.Equal("mnopqrstuvwx", grid.Monitors[1].Rows);
+        Assert.All(grid.Monitors, m => Assert.Equal(Alphabet[..20], m.Cols));
+        Assert.Equal(1, grid.Resolve("ma")!.Value.Monitor.Index);
+    }
+
+    [Theory]
+    [InlineData(-1, 0, 4)]
+    [InlineData(37, 0, 4)]
+    [InlineData(0, 19, 4)] // 19 rows x 2 monitors > 36 characters
+    [InlineData(0, 0, 1)]
+    [InlineData(0, 0, 11)]
+    public void RejectsImpossibleSizes(int columns, int rows, int subSize) =>
+        Assert.Throws<ArgumentException>(() => Grid.Build([Hd, Hd], Alphabet, columns, rows, subSize));
+
+    [Theory]
+    [InlineData(3, "ck08", true)]
+    [InlineData(3, "ck09", false)]
+    [InlineData(10, "ck99", true)]
+    [InlineData(2, "ck04", false)]
+    public void SubGridSizeLimitsSubLabels(int subSize, string label, bool valid)
+    {
+        var grid = Grid.Build([Hd], Alphabet, subSize: subSize);
+        Assert.Equal(valid, grid.Resolve(label) is not null);
+        Assert.Equal(valid, grid.CanAppend(label[..3], label[3]));
+    }
+
+    [Fact]
+    public void SubGridOf3SplitsIntoThirds()
+    {
+        var grid = Grid.Build([Hd], Alphabet, subSize: 3);
+        var cell = grid.Resolve("ck")!.Value;
+        var target = grid.Resolve("ck05")!.Value; // third column, middle row
+        Assert.Equal((cell.Col + 2.5 / 3) / 36, target.Fx, 9);
+        Assert.Equal((cell.Row + 1.5 / 3) / 36, target.Fy, 9);
+    }
+
     [Theory]
     [InlineData("00", 0, 0)]
     [InlineData("03", 3, 0)]

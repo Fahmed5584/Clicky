@@ -21,12 +21,12 @@ public sealed class Overlay(Config config, IPlatform platform)
     public void Show()
     {
         Close();
+        CreateConfigFile();
         var screens = _screenProbe.Screens.All;
         try
         {
-            _grid = Grid.Build(
-                screens.Select(s => new ScreenBounds(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height)).ToList(),
-                config.Alphabet);
+            _grid = Grid.Build(screens.Select(ToBounds).ToList(),
+                config.Alphabet, config.Columns, config.Rows, config.SubGridSize);
         }
         catch (ArgumentException e)
         {
@@ -43,6 +43,29 @@ public sealed class Overlay(Config config, IPlatform platform)
         }
         (_windows.FirstOrDefault(w => w.IsPrimary) ?? _windows[0]).Activate();
     }
+
+    /// <summary>
+    /// Writes a missing config file sized to the current monitors. Tried at startup and again on
+    /// each show, in case the screens weren't known yet.
+    /// </summary>
+    public void CreateConfigFile()
+    {
+        if (!config.IsNew)
+            return;
+        var screens = _screenProbe.Screens.All.Select(ToBounds).ToList();
+        if (screens.Count == 0)
+            return;
+        try
+        {
+            config.CreateFile(screens);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn($"cannot write {Paths.ConfigFile}: {e.Message}");
+        }
+    }
+
+    private static ScreenBounds ToBounds(Screen s) => new(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height);
 
     public void Close()
     {
@@ -83,15 +106,44 @@ public sealed class Overlay(Config config, IPlatform platform)
     {
         var target = _grid!.Resolve(label);
         int monitorCount = _grid.Monitors.Count;
-        Close();
-        if (target is { } t)
-            _ = ClickAsync(t, monitorCount);
+        if (target is not { } t)
+        {
+            Close();
+            return;
+        }
+
+        // Where the platform allows it, the windows stay open (blank and click-through) until the
+        // click is sent, so clicky keeps the foreground; see WindowsPlatform. Otherwise close now.
+        var windows = _windows.ToList();
+        _windows.Clear();
+        _grid = null;
+        Typed = "";
+        if (windows.All(platform.MakeClickThrough))
+        {
+            foreach (var w in windows)
+                w.Content = null;
+        }
+        else
+        {
+            foreach (var w in windows)
+                w.Close();
+            windows.Clear();
+        }
+        _ = ClickAsync(t, monitorCount, windows);
     }
 
-    private async Task ClickAsync(Target target, int monitorCount)
+    private async Task ClickAsync(Target target, int monitorCount, List<OverlayWindow> windows)
     {
-        await Task.Delay(config.ClickDelayMs); // let the overlay disappear first
-        await platform.ClickAsync(target, monitorCount);
+        await Task.Delay(config.ClickDelayMs); // let the overlay disappear (or go blank) first
+        try
+        {
+            await platform.ClickAsync(target, monitorCount);
+        }
+        finally
+        {
+            foreach (var w in windows)
+                w.Close();
+        }
     }
 
     private static char? KeyChar(KeyEventArgs e)

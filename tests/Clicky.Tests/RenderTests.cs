@@ -33,10 +33,18 @@ public class RenderTests
     [InlineData("sk", 2)]
     [InlineData("sk1", 2)]
     [InlineData("ak", 1)]
-    public void Renders(string typed, int monitors)
+    public void Renders(string typed, int monitors) => Render(typed, monitors, columns: 0, rows: 0, "");
+
+    /// <summary>A 32x18 grid on one 1080p monitor: square cells, bigger labels, sub-labels inside the cell.</summary>
+    [AvaloniaTheory]
+    [InlineData("")]
+    [InlineData("ak1")]
+    public void RendersCustomSize(string typed) => Render(typed, 1, columns: 32, rows: 18, "-32x18");
+
+    private static void Render(string typed, int monitors, int columns, int rows, string suffix)
     {
         var screens = Enumerable.Range(0, monitors).Select(i => new ScreenBounds(i * 1920, 0, 1920, 1080)).ToList();
-        var grid = Grid.Build(screens, Alphabet);
+        var grid = Grid.Build(screens, Alphabet, columns, rows);
         var dir = Environment.GetEnvironmentVariable("CLICKY_SNAPSHOT_DIR") ?? Path.GetTempPath();
 
         foreach (var monitor in grid.Monitors)
@@ -51,7 +59,7 @@ public class RenderTests
             window.Show();
             using var frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
-            frame!.Save(Path.Combine(dir, $"clicky-{monitors}mon-'{typed}'-monitor{monitor.Index}.png"));
+            frame!.Save(Path.Combine(dir, $"clicky-{monitors}mon{suffix}-'{typed}'-monitor{monitor.Index}.png"));
             window.Close();
         }
     }

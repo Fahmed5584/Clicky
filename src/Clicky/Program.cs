@@ -94,6 +94,7 @@ public sealed class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         var overlay = new Overlay(Config, _platform);
+        overlay.CreateConfigFile();
         void Show() => Dispatcher.UIThread.Post(overlay.Show);
 
         _server = new Ipc.Server(command =>
