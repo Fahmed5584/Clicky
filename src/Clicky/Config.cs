@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Clicky;
 
@@ -22,9 +23,12 @@ public static class Paths
     public static string PortalTokenFile => Path.Combine(DataHome, "clicky", "portal.json");
 }
 
-/// <summary>config.json. Created with defaults on first run; read once at startup.</summary>
+/// <summary>config.json. Created on first run with a grid sized to the screens; read once at startup.</summary>
 public sealed class Config
 {
+    /// <summary>Cell size, in pixels, that a new config's columns and rows aim for.</summary>
+    public const int TargetCellSize = 60;
+
     public string Hotkey { get; set; } = "Ctrl+Alt+Shift+M";
 
     /// <summary>Row and column characters. Rows are split across monitors; every monitor gets all columns.</summary>
@@ -45,6 +49,10 @@ public sealed class Config
     /// <summary>Delay between hiding the overlay and clicking.</summary>
     public int ClickDelayMs { get; set; } = 60;
 
+    /// <summary>True when there was no file to load; <see cref="CreateFile"/> then writes one.</summary>
+    [JsonIgnore]
+    public bool IsNew { get; private set; }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -55,23 +63,17 @@ public sealed class Config
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    /// <summary>Loads and validates the config, writing the defaults first if the file is missing.</summary>
+    /// <summary>
+    /// Loads and validates the config. A missing file gives the defaults with <see cref="IsNew"/> set;
+    /// nothing is written until <see cref="CreateFile"/>, once the screens are known.
+    /// </summary>
     public static Config Load(string? path = null)
     {
         path ??= Paths.ConfigFile;
-        Config config;
-        if (File.Exists(path))
-        {
-            config = JsonSerializer.Deserialize<Config>(File.ReadAllText(path), JsonOptions)
-                ?? throw new InvalidDataException($"{path} is empty");
-        }
-        else
-        {
-            config = new Config();
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(config, JsonOptions));
-            Log.Info($"wrote default config to {path}");
-        }
+        var config = File.Exists(path)
+            ? JsonSerializer.Deserialize<Config>(File.ReadAllText(path), JsonOptions)
+              ?? throw new InvalidDataException($"{path} is empty")
+            : new Config { IsNew = true };
 
         Clicky.Hotkey.Parse(config.Hotkey);
         config.Alphabet = config.Alphabet.ToLowerInvariant();
@@ -88,6 +90,33 @@ public sealed class Config
         if (config.ClickDelayMs < 0)
             throw new InvalidDataException("clickDelayMs must be >= 0");
         return config;
+    }
+
+    /// <summary>
+    /// Sizes the grid for <paramref name="screens"/> and writes the file. The counts are fixed from
+    /// then on, so labels never move unless the user edits them.
+    /// </summary>
+    public void CreateFile(IReadOnlyList<ScreenBounds> screens, string? path = null)
+    {
+        path ??= Paths.ConfigFile;
+        (Columns, Rows) = FitGrid(screens, Alphabet.Length);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
+        IsNew = false;
+        Log.Info($"wrote config with a {Columns}x{Rows} grid to {path}");
+    }
+
+    /// <summary>
+    /// Columns and rows per monitor that give roughly square <see cref="TargetCellSize"/> cells on the
+    /// smallest monitor, within what the alphabet allows. Bigger monitors get bigger cells.
+    /// </summary>
+    public static (int Columns, int Rows) FitGrid(IReadOnlyList<ScreenBounds> screens, int alphabetLength)
+    {
+        int width = screens.Min(s => s.Width), height = screens.Min(s => s.Height);
+        int columns = Math.Clamp((int)Math.Round((double)width / TargetCellSize), 2, alphabetLength);
+        int rows = Math.Clamp((int)Math.Round((double)height / TargetCellSize), 1,
+            Math.Max(1, alphabetLength / screens.Count));
+        return (columns, rows);
     }
 }
 

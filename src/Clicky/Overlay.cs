@@ -21,11 +21,11 @@ public sealed class Overlay(Config config, IPlatform platform)
     public void Show()
     {
         Close();
+        CreateConfigFile();
         var screens = _screenProbe.Screens.All;
         try
         {
-            _grid = Grid.Build(
-                screens.Select(s => new ScreenBounds(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height)).ToList(),
+            _grid = Grid.Build(screens.Select(ToBounds).ToList(),
                 config.Alphabet, config.Columns, config.Rows, config.SubGridSize);
         }
         catch (ArgumentException e)
@@ -43,6 +43,29 @@ public sealed class Overlay(Config config, IPlatform platform)
         }
         (_windows.FirstOrDefault(w => w.IsPrimary) ?? _windows[0]).Activate();
     }
+
+    /// <summary>
+    /// Writes a missing config file sized to the current monitors. Tried at startup and again on
+    /// each show, in case the screens weren't known yet.
+    /// </summary>
+    public void CreateConfigFile()
+    {
+        if (!config.IsNew)
+            return;
+        var screens = _screenProbe.Screens.All.Select(ToBounds).ToList();
+        if (screens.Count == 0)
+            return;
+        try
+        {
+            config.CreateFile(screens);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn($"cannot write {Paths.ConfigFile}: {e.Message}");
+        }
+    }
+
+    private static ScreenBounds ToBounds(Screen s) => new(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height);
 
     public void Close()
     {

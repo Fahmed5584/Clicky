@@ -54,14 +54,14 @@ The hotkey is registered with KDE's global shortcuts. It also appears under Syst
 
 ## Config
 
-The config lives in `%APPDATA%\clicky\config.json` (Windows) or `~/.config/clicky/config.json` (Linux). It is created on first run. Restart clicky after editing it.
+The config lives in `%APPDATA%\clicky\config.json` (Windows) or `~/.config/clicky/config.json` (Linux). It is created on first run, with `columns` and `rows` picked to give roughly 60×60-pixel cells on your smallest monitor (32×18 on 1920×1080). Those numbers are written once and never recalculated, so change them if you want a different grid. Restart clicky after editing it.
 
 ```json
 {
   "hotkey": "Ctrl+Alt+Shift+M",
   "alphabet": "abcdefghijklmnopqrstuvwxyz0123456789",
-  "columns": 0,
-  "rows": 0,
+  "columns": 32,
+  "rows": 18,
   "subGridSize": 4,
   "fontSize": 0,
   "clickDelayMs": 60
@@ -74,7 +74,7 @@ The config lives in `%APPDATA%\clicky\config.json` (Windows) or `~/.config/click
 - **rows:** rows on each monitor. Each monitor takes the next that many alphabet characters, in monitor order, so `rows` × the number of monitors can't be more than the alphabet length. `0` splits the whole alphabet between the monitors.
 - **subGridSize:** the chosen cell is split into this many × this many squares, from `2` to `10`. The numbers always have two digits (`00`–`99`).
 
-Bigger cells make the labels easier to read. Square cells use the space best: for example, use `"columns": 32, "rows": 18` on a 1920×1080 screen, which gives 60×60-pixel cells instead of 53×30. With a smaller grid, it helps to reorder `alphabet` so the keys that are easiest to reach come first.
+Bigger cells make the labels easier to read. Square cells use the space best: on a 1920×1080 screen, 32×18 gives 60×60-pixel cells, where the whole alphabet (`0`/`0`) gives 53×30. With a smaller grid, it helps to reorder `alphabet` so the keys that are easiest to reach come first.
 - **fontSize:** label size in pixels; `0` fits the label to the cell.
 - **clickDelayMs:** how long to wait after hiding the grid before clicking.
 
