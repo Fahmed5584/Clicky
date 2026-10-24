@@ -49,14 +49,24 @@ public sealed class GridView(Grid grid, GridMonitor monitor, Func<string> typed,
         string text = typed();
         if (text.Length >= Grid.CellLabelLength && grid.Resolve(text[..Grid.CellLabelLength]) is { } cell)
         {
+            // Only the chosen cell's monitor shows anything beyond the tint.
             if (cell.Monitor == monitor)
                 DrawSubGrid(ctx, new Rect(cell.Col * cellW, cell.Row * cellH, cellW, cellH),
                     text[Grid.CellLabelLength..], screen);
-            return;
         }
+        else
+        {
+            DrawCells(ctx, screen, cellW, cellH, text.Length > 0 ? grid.FindRow(text[0]) : null);
+        }
+    }
 
-        // A typed row lights up on its monitor; every other label dims.
-        var typedRow = text.Length > 0 ? grid.FindRow(text[0]) : null;
+    /// <summary>
+    /// Draws every cell label. Once a row is typed it lights up on its monitor and every other
+    /// label dims.
+    /// </summary>
+    private void DrawCells(DrawingContext ctx, Rect screen, double cellW, double cellH,
+        (GridMonitor Monitor, int Row)? typedRow)
+    {
         bool anyRowTyped = typedRow is not null;
         int? selectedRow = typedRow is var (m, row) && m == monitor ? row : null;
         if (selectedRow is int sr)
@@ -96,17 +106,23 @@ public sealed class GridView(Grid grid, GridMonitor monitor, Func<string> typed,
             return;
         }
 
-        // The key goes right of the cell (left if that would run off-screen), vertically
-        // centred on the cell and kept on-screen.
-        const double gap = 10;
-        double side = KeySquare * grid.SubSize;
-        double x = cell.Right + gap + side <= screen.Right ? cell.Right + gap : cell.X - gap - side;
-        double y = Math.Clamp(cell.Center.Y - side / 2, screen.Y, screen.Bottom - side);
-        var key = new Rect(x, y, side, side);
+        var key = KeyArea(cell, screen, KeySquare * grid.SubSize);
         ctx.FillRectangle(KeyFill, key);
         DrawLines(ctx, SubPen, key, grid.SubSize, grid.SubSize);
         ctx.DrawRectangle(null, CellPen, key);
         DrawSubLabels(ctx, key, typedSub, FitFont(KeySquare, KeySquare, widthShare: 0.8, heightShare: 0.6), shadow: null);
+    }
+
+    /// <summary>
+    /// Where the magnified key goes: right of the cell (left if that would run off-screen),
+    /// vertically centred on the cell and kept on-screen.
+    /// </summary>
+    private static Rect KeyArea(Rect cell, Rect screen, double side)
+    {
+        const double gap = 10;
+        double x = cell.Right + gap + side <= screen.Right ? cell.Right + gap : cell.X - gap - side;
+        double y = Math.Clamp(cell.Center.Y - side / 2, screen.Y, screen.Bottom - side);
+        return new Rect(x, y, side, side);
     }
 
     private void DrawSubLabels(DrawingContext ctx, Rect area, string typedSub, double size, IBrush? shadow)

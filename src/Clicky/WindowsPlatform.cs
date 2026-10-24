@@ -55,12 +55,16 @@ public sealed class WindowsPlatform : IPlatform
 
     public Task ClickAsync(Target target, int monitorCount)
     {
-        var b = target.Monitor.Bounds;
-        int x = b.X + Math.Clamp((int)Math.Round(target.Fx * b.Width), 0, b.Width - 1);
-        int y = b.Y + Math.Clamp((int)Math.Round(target.Fy * b.Height), 0, b.Height - 1);
+        var (x, y) = target.ToScreenPixel();
         if (!Native.SetCursorPos(x, y))
             Log.Error($"SetCursorPos failed (error {Marshal.GetLastWin32Error()})");
+        SendLeftClick();
+        return Task.CompletedTask;
+    }
 
+    /// <summary>Presses and releases the left button where the cursor is.</summary>
+    private static void SendLeftClick()
+    {
         Native.INPUT[] inputs =
         [
             new() { type = Native.INPUT_MOUSE, mi = { dwFlags = Native.MOUSEEVENTF_LEFTDOWN } },
@@ -69,7 +73,6 @@ public sealed class WindowsPlatform : IPlatform
         if (Native.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Native.INPUT>()) != inputs.Length)
             Log.Error($"SendInput failed (error {Marshal.GetLastWin32Error()}); foreground app: {ForegroundProcess()} " +
                       "(input to elevated apps is blocked unless clicky runs as admin)");
-        return Task.CompletedTask;
     }
 
     public bool MakeClickThrough(Window window)

@@ -93,6 +93,7 @@ src/Clicky/
   Ipc.cs              single instance and `clicky show` (named pipe)
   Platform.cs         IPlatform: the OS-specific parts
   KdePlatform.cs      kglobalaccel + RemoteDesktop portal over D-Bus, XDG autostart
+  DBus.cs             D-Bus method calls and signal subscriptions for KdePlatform
   WindowsPlatform.cs  RegisterHotKey, SetCursorPos + SendInput, Run-key autostart
 tests/Clicky.Tests/   xUnit + Avalonia.Headless
 tools/dbus-mock/      mock kglobalaccel + portal for testing KdePlatform without KDE

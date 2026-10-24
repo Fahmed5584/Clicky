@@ -25,8 +25,7 @@ public sealed class Overlay(Config config, IPlatform platform)
         var screens = _screenProbe.Screens.All;
         try
         {
-            _grid = Grid.Build(screens.Select(ToBounds).ToList(),
-                config.Alphabet, config.Columns, config.Rows, config.SubGridSize);
+            _grid = Grid.Build(ToBounds(screens), config.Alphabet, config.Columns, config.Rows, config.SubGridSize);
         }
         catch (ArgumentException e)
         {
@@ -52,7 +51,7 @@ public sealed class Overlay(Config config, IPlatform platform)
     {
         if (!config.IsNew)
             return;
-        var screens = _screenProbe.Screens.All.Select(ToBounds).ToList();
+        var screens = ToBounds(_screenProbe.Screens.All);
         if (screens.Count == 0)
             return;
         try
@@ -65,14 +64,23 @@ public sealed class Overlay(Config config, IPlatform platform)
         }
     }
 
-    private static ScreenBounds ToBounds(Screen s) => new(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height);
+    private static List<ScreenBounds> ToBounds(IEnumerable<Screen> screens) =>
+        screens.Select(s => new ScreenBounds(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height)).ToList();
 
     public void Close()
     {
-        Typed = "";
-        foreach (var w in _windows)
+        foreach (var w in EndSession())
             w.Close();
+    }
+
+    /// <summary>Resets the typed input and hands the open windows to the caller, who must close them.</summary>
+    private List<OverlayWindow> EndSession()
+    {
+        var windows = _windows.ToList();
         _windows.Clear();
+        _grid = null;
+        Typed = "";
+        return windows;
     }
 
     public void HandleKey(KeyEventArgs e)
@@ -92,7 +100,7 @@ public sealed class Overlay(Config config, IPlatform platform)
         {
             Click(Typed[..Grid.CellLabelLength]); // skip the sub-grid: click the cell centre
         }
-        else if (KeyChar(e) is char c && _grid.CanAppend(Typed, c))
+        else if (KeyChar(e.Key, e.KeySymbol) is char c && _grid.CanAppend(Typed, c))
         {
             Typed += c;
             if (Typed.Length == Grid.FullLabelLength)
@@ -114,24 +122,19 @@ public sealed class Overlay(Config config, IPlatform platform)
 
         // Where the platform allows it, the windows stay open (blank and click-through) until the
         // click is sent, so clicky keeps the foreground; see WindowsPlatform. Otherwise close now.
-        var windows = _windows.ToList();
-        _windows.Clear();
-        _grid = null;
-        Typed = "";
-        if (windows.All(platform.MakeClickThrough))
+        var windows = EndSession();
+        bool keepOpen = windows.All(platform.MakeClickThrough);
+        foreach (var w in windows)
         {
-            foreach (var w in windows)
+            if (keepOpen)
                 w.Content = null;
-        }
-        else
-        {
-            foreach (var w in windows)
+            else
                 w.Close();
-            windows.Clear();
         }
-        _ = ClickAsync(t, monitorCount, windows);
+        _ = ClickAsync(t, monitorCount, keepOpen ? windows : []);
     }
 
+    /// <summary>Clicks after a short delay, then closes the <paramref name="windows"/> that stayed open for it.</summary>
     private async Task ClickAsync(Target target, int monitorCount, List<OverlayWindow> windows)
     {
         await Task.Delay(config.ClickDelayMs); // let the overlay disappear (or go blank) first
@@ -146,15 +149,19 @@ public sealed class Overlay(Config config, IPlatform platform)
         }
     }
 
-    private static char? KeyChar(KeyEventArgs e)
+    /// <summary>
+    /// The lower-case character a key press types: the keyboard layout's symbol when there is a
+    /// printable one, otherwise the letter or digit printed on the key. Null for any other key.
+    /// </summary>
+    internal static char? KeyChar(Key key, string? symbol)
     {
-        if (e.KeySymbol is { Length: 1 } symbol && !char.IsControl(symbol[0]))
+        if (symbol is { Length: 1 } && !char.IsControl(symbol[0]))
             return char.ToLowerInvariant(symbol[0]);
-        return e.Key switch
+        return key switch
         {
-            >= Key.A and <= Key.Z => (char)('a' + (e.Key - Key.A)),
-            >= Key.D0 and <= Key.D9 => (char)('0' + (e.Key - Key.D0)),
-            >= Key.NumPad0 and <= Key.NumPad9 => (char)('0' + (e.Key - Key.NumPad0)),
+            >= Key.A and <= Key.Z => (char)('a' + (key - Key.A)),
+            >= Key.D0 and <= Key.D9 => (char)('0' + (key - Key.D0)),
+            >= Key.NumPad0 and <= Key.NumPad9 => (char)('0' + (key - Key.NumPad0)),
             _ => null,
         };
     }

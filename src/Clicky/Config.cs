@@ -75,21 +75,30 @@ public sealed class Config
               ?? throw new InvalidDataException($"{path} is empty")
             : new Config { IsNew = true };
 
-        Clicky.Hotkey.Parse(config.Hotkey);
         config.Alphabet = config.Alphabet.ToLowerInvariant();
-        if (config.Alphabet.Length < 2 || config.Alphabet.Distinct().Count() != config.Alphabet.Length)
-            throw new InvalidDataException("alphabet must have at least 2 characters and no duplicates");
-        if (config.Columns < 0 || config.Columns > config.Alphabet.Length)
-            throw new InvalidDataException($"columns must be between 0 and the alphabet length ({config.Alphabet.Length})");
-        if (config.Rows < 0 || config.Rows > config.Alphabet.Length)
-            throw new InvalidDataException($"rows must be between 0 and the alphabet length ({config.Alphabet.Length})");
-        if (config.SubGridSize < 2 || config.SubGridSize > Grid.MaxSubSize)
-            throw new InvalidDataException($"subGridSize must be between 2 and {Grid.MaxSubSize}");
-        if (config.FontSize < 0)
-            throw new InvalidDataException("fontSize must be >= 0");
-        if (config.ClickDelayMs < 0)
-            throw new InvalidDataException("clickDelayMs must be >= 0");
+        config.Validate();
         return config;
+    }
+
+    /// <summary>
+    /// Throws <see cref="FormatException"/> for a bad hotkey and <see cref="InvalidDataException"/>
+    /// for any other bad value. Whether the rows fit the monitors is only known at show time.
+    /// </summary>
+    private void Validate()
+    {
+        Clicky.Hotkey.Parse(Hotkey);
+        if (Alphabet.Length < 2 || Alphabet.Distinct().Count() != Alphabet.Length)
+            throw new InvalidDataException("alphabet must have at least 2 characters and no duplicates");
+        if (Columns < 0 || Columns > Alphabet.Length)
+            throw new InvalidDataException($"columns must be between 0 and the alphabet length ({Alphabet.Length})");
+        if (Rows < 0 || Rows > Alphabet.Length)
+            throw new InvalidDataException($"rows must be between 0 and the alphabet length ({Alphabet.Length})");
+        if (SubGridSize < 2 || SubGridSize > Grid.MaxSubSize)
+            throw new InvalidDataException($"subGridSize must be between 2 and {Grid.MaxSubSize}");
+        if (FontSize < 0)
+            throw new InvalidDataException("fontSize must be >= 0");
+        if (ClickDelayMs < 0)
+            throw new InvalidDataException("clickDelayMs must be >= 0");
     }
 
     /// <summary>

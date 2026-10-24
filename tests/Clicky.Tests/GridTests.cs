@@ -27,6 +27,25 @@ public class GridTests
         Assert.Equal(y, py, 2);
     }
 
+    [Theory]
+    [InlineData("aa", 27, 30)]
+    [InlineData("99", 3813, 1050)]
+    [InlineData("sa00", 1927, 8)] // second monitor; 7.5 rounds to even
+    [InlineData("s900", 3793, 8)]
+    public void ScreenPixelIsRoundedAndOffsetByTheMonitor(string label, int x, int y)
+    {
+        var grid = Grid.Build([Hd, new ScreenBounds(1920, 0, 1920, 1080)], Alphabet);
+        Assert.Equal((x, y), grid.Resolve(label)!.Value.ToScreenPixel());
+    }
+
+    [Fact]
+    public void ScreenPixelStaysOnTheMonitor()
+    {
+        var monitor = Grid.Build([new ScreenBounds(-100, 50, 100, 80)], Alphabet).Monitors[0];
+        Assert.Equal((-1, 129), new Target(monitor, 0, 0, Fx: 1, Fy: 1).ToScreenPixel());
+        Assert.Equal((-100, 50), new Target(monitor, 0, 0, Fx: -0.1, Fy: 0).ToScreenPixel());
+    }
+
     [Fact]
     public void TwoMonitorsSplitRowsLeftToRight()
     {
