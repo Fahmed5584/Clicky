@@ -10,19 +10,16 @@ public readonly record struct PortalStream(uint NodeId, ScreenBounds Bounds);
 /// KDE Plasma (Wayland) over D-Bus: the hotkey through kglobalaccel, clicks through the
 /// xdg-desktop-portal RemoteDesktop interface, autostart through a .desktop file.
 /// </summary>
-/// <remarks>
-/// Tmds.DBus.Protocol must stay at the version Avalonia.FreeDesktop is built against (0.21.x);
-/// see CLAUDE.md.
-/// </remarks>
 public sealed class KdePlatform : IPlatform
 {
-    private delegate void BodyWriter(ref MessageWriter writer);
-
     // kglobalaccel
     private const string AccelService = "org.kde.kglobalaccel";
-    private const string Component = "clicky";
-    private const string Action = "show-grid";
-    private static readonly string[] ActionId = [Component, Action, "clicky", "Show click grid"];
+    private const string AccelPath = "/kglobalaccel";
+    private const string AccelInterface = "org.kde.KGlobalAccel";
+    private const string ComponentName = "clicky";
+    private const string ActionName = "show-grid";
+    // Component and action, each as an id and then a display name.
+    private static readonly string[] ActionId = [ComponentName, ActionName, "clicky", "Show click grid"];
     private const uint IsDefault = 1, SetPresent = 2, NoAutoloading = 4; // KGlobalAccel::SetShortcutFlag
 
     // xdg-desktop-portal
@@ -31,12 +28,15 @@ public sealed class KdePlatform : IPlatform
     private const string RemoteDesktop = "org.freedesktop.portal.RemoteDesktop";
     private const string ScreenCast = "org.freedesktop.portal.ScreenCast";
     private const uint DevicePointer = 2, SourceMonitor = 1, PersistUntilRevoked = 2;
+    private const uint ButtonPressed = 1, ButtonReleased = 0;
     private const int BtnLeft = 0x110; // linux/input-event-codes.h
+    private static readonly Dictionary<string, VariantValue> NoOptions = new();
 
     private static string AutostartFile => Path.Combine(Paths.ConfigHome, "autostart", "clicky.desktop");
 
+    /// <summary>Serialises portal use, so a click never runs while the session is being (re)built.</summary>
     private readonly SemaphoreSlim _portalGate = new(1, 1);
-    private Connection? _connection;
+    private DBus? _bus;
     private IDisposable? _hotkeyWatch;
     private string? _session;
     private IReadOnlyList<PortalStream> _streams = [];
@@ -46,25 +46,24 @@ public sealed class KdePlatform : IPlatform
     {
         try
         {
-            var connection = await ConnectAsync();
+            var bus = await ConnectAsync();
             int[] keys = [hotkey.ToQtKey()];
-            await CallAsync(AccelService, "/kglobalaccel", "org.kde.KGlobalAccel", "doRegister", "as",
+            await bus.CallAsync(AccelService, AccelPath, AccelInterface, "doRegister", "as",
                 (ref MessageWriter w) => w.WriteArray(ActionId));
             // First as the default shortcut, then as the active one (what KDE's own apps do).
             foreach (uint flags in new[] { IsDefault, SetPresent | NoAutoloading })
-                await CallAsync(AccelService, "/kglobalaccel", "org.kde.KGlobalAccel", "setShortcut", "asaiu",
+                await bus.CallAsync(AccelService, AccelPath, AccelInterface, "setShortcut", "asaiu",
                     (ref MessageWriter w) =>
                     {
                         w.WriteArray(ActionId);
                         w.WriteArray(keys);
                         w.WriteUInt32(flags);
                     });
-            string componentPath = await connection.CallMethodAsync(
-                MethodCall(AccelService, "/kglobalaccel", "org.kde.KGlobalAccel", "getComponent", "s",
-                    (ref MessageWriter w) => w.WriteString(Component)),
+            string componentPath = await bus.CallAsync(AccelService, AccelPath, AccelInterface, "getComponent", "s",
+                (ref MessageWriter w) => w.WriteString(ComponentName),
                 (m, _) => m.GetBodyReader().ReadObjectPathAsString());
 
-            _hotkeyWatch = await WatchSignalAsync(AccelService, componentPath,
+            _hotkeyWatch = await bus.WatchSignalAsync(AccelService, componentPath,
                 "org.kde.kglobalaccel.Component", "globalShortcutPressed",
                 (m, _) =>
                 {
@@ -73,7 +72,7 @@ public sealed class KdePlatform : IPlatform
                 },
                 (error, value) =>
                 {
-                    if (error is null && value is (Component, Action))
+                    if (error is null && value is (ComponentName, ActionName))
                         onPressed();
                 });
             Log.Info($"registered shortcut {hotkey} with kglobalaccel");
@@ -112,28 +111,21 @@ public sealed class KdePlatform : IPlatform
         try
         {
             await EnsureSessionAsync(monitorCount);
+            // Each stream is its monitor's coordinate space, in logical pixels.
             var stream = _streams[target.Monitor.Index];
-            string session = _session!;
-            var noOptions = new Dictionary<string, VariantValue>();
-
-            await CallAsync(PortalService, PortalPath, RemoteDesktop, "NotifyPointerMotionAbsolute", "oa{sv}udd",
-                (ref MessageWriter w) =>
+            double x = target.Fx * stream.Bounds.Width, y = target.Fy * stream.Bounds.Height;
+            await NotifyAsync("NotifyPointerMotionAbsolute", "udd", (ref MessageWriter w) =>
+            {
+                w.WriteUInt32(stream.NodeId);
+                w.WriteDouble(x);
+                w.WriteDouble(y);
+            });
+            foreach (uint state in new[] { ButtonPressed, ButtonReleased })
+                await NotifyAsync("NotifyPointerButton", "iu", (ref MessageWriter w) =>
                 {
-                    w.WriteObjectPath(session);
-                    w.WriteDictionary(noOptions);
-                    w.WriteUInt32(stream.NodeId);
-                    w.WriteDouble(target.Fx * stream.Bounds.Width);
-                    w.WriteDouble(target.Fy * stream.Bounds.Height);
+                    w.WriteInt32(BtnLeft);
+                    w.WriteUInt32(state);
                 });
-            foreach (uint state in new[] { 1u, 0u })
-                await CallAsync(PortalService, PortalPath, RemoteDesktop, "NotifyPointerButton", "oa{sv}iu",
-                    (ref MessageWriter w) =>
-                    {
-                        w.WriteObjectPath(session);
-                        w.WriteDictionary(noOptions);
-                        w.WriteInt32(BtnLeft);
-                        w.WriteUInt32(state);
-                    });
         }
         catch (Exception e)
         {
@@ -164,10 +156,12 @@ public sealed class KdePlatform : IPlatform
 
     public void UninstallAutostart() => File.Delete(AutostartFile);
 
+    private async Task<DBus> ConnectAsync() => _bus ??= await DBus.ConnectSessionAsync();
+
     /// <summary>
-    /// Opens a RemoteDesktop session with one ScreenCast stream per monitor, or reopens it if
-    /// the monitor count changed. The streams are only used as coordinate spaces for pointer
-    /// motion; the PipeWire streams themselves are never opened.
+    /// Makes sure a portal session is open, opening one if there is none or reopening it if the
+    /// monitor count changed. <paramref name="expectedStreams"/> is the overlay's monitor count,
+    /// or null to accept whatever the portal shares.
     /// </summary>
     private async Task EnsureSessionAsync(int? expectedStreams)
     {
@@ -180,15 +174,37 @@ public sealed class KdePlatform : IPlatform
         }
         await ConnectAsync();
 
+        (_session, _streams) = await OpenSessionAsync();
+        Log.Info($"remote desktop portal ready with {_streams.Count} monitor stream(s)");
+
+        if (expectedStreams is not null && expectedStreams != _streams.Count)
+            Log.Warn($"overlay has {expectedStreams} monitors but the portal shared {_streams.Count}; " +
+                     "share all monitors in the permission dialog");
+        if (_streams.Count == 0 || _streams.Count < expectedStreams)
+        {
+            await CloseSessionAsync();
+            throw new InvalidOperationException("portal did not provide a stream for every monitor");
+        }
+    }
+
+    /// <summary>
+    /// Opens a RemoteDesktop session that can move the pointer, with one ScreenCast stream per
+    /// monitor. The streams are only used as coordinate spaces for pointer motion; the PipeWire
+    /// streams themselves are never opened.
+    /// </summary>
+    private async Task<(string Session, IReadOnlyList<PortalStream> Streams)> OpenSessionAsync()
+    {
         var created = await RequestAsync(RemoteDesktop, "CreateSession", "a{sv}", token => (ref MessageWriter w) =>
             w.WriteDictionary(new Dictionary<string, VariantValue>
             {
                 ["handle_token"] = token,
                 ["session_handle_token"] = NextToken(),
             }));
+        // Portal versions differ on whether this is a string or an object path.
         var handle = created["session_handle"];
         string session = handle.Type == VariantValueType.ObjectPath ? handle.GetObjectPathAsString() : handle.GetString();
 
+        // With a saved restore token, KDE skips the permission dialog.
         string? restoreToken = LoadRestoreToken();
         await RequestAsync(RemoteDesktop, "SelectDevices", "oa{sv}", token => (ref MessageWriter w) =>
         {
@@ -224,18 +240,8 @@ public sealed class KdePlatform : IPlatform
 
         if (started.TryGetValue("restore_token", out var newToken))
             SaveRestoreToken(newToken.GetString());
-        _streams = started.TryGetValue("streams", out var streams) ? SortStreams(ParseStreams(streams)) : [];
-        _session = session;
-        Log.Info($"remote desktop portal ready with {_streams.Count} monitor stream(s)");
-
-        if (expectedStreams is not null && expectedStreams != _streams.Count)
-            Log.Warn($"overlay has {expectedStreams} monitors but the portal shared {_streams.Count}; " +
-                     "share all monitors in the permission dialog");
-        if (_streams.Count == 0 || _streams.Count < expectedStreams)
-        {
-            await CloseSessionAsync();
-            throw new InvalidOperationException("portal did not provide a stream for every monitor");
-        }
+        var streams = started.TryGetValue("streams", out var value) ? SortStreams(ParseStreams(value)) : [];
+        return (session, streams);
     }
 
     private async Task CloseSessionAsync()
@@ -245,7 +251,7 @@ public sealed class KdePlatform : IPlatform
             try
             {
                 // Bounded so an unresponsive portal can't hang shutdown.
-                await CallAsync(PortalService, _session, "org.freedesktop.portal.Session", "Close")
+                await _bus!.CallAsync(PortalService, _session, "org.freedesktop.portal.Session", "Close")
                     .WaitAsync(TimeSpan.FromSeconds(1));
             }
             catch (Exception e) when (e is DBusException or TimeoutException)
@@ -257,17 +263,33 @@ public sealed class KdePlatform : IPlatform
         _streams = [];
     }
 
-    /// <summary>Calls a portal method that returns a Request handle, and awaits the request's Response signal.</summary>
+    /// <summary>Calls a RemoteDesktop Notify* method, which all start with the session and an options dictionary.</summary>
+    private Task NotifyAsync(string member, string argsSignature, DBus.BodyWriter args)
+    {
+        string session = _session!;
+        return _bus!.CallAsync(PortalService, PortalPath, RemoteDesktop, member, "oa{sv}" + argsSignature,
+            (ref MessageWriter w) =>
+            {
+                w.WriteObjectPath(session);
+                w.WriteDictionary(NoOptions);
+                args(ref w);
+            });
+    }
+
+    /// <summary>
+    /// Calls a portal method that answers through a Request object, and awaits that request's
+    /// Response signal. <paramref name="body"/> gets the handle_token to put in the options.
+    /// </summary>
     private async Task<Dictionary<string, VariantValue>> RequestAsync(string @interface, string member,
-        string signature, Func<string, BodyWriter> body)
+        string signature, Func<string, DBus.BodyWriter> body)
     {
         string token = NextToken();
-        string sender = _connection!.UniqueName!.TrimStart(':').Replace('.', '_');
+        string sender = _bus!.UniqueName.TrimStart(':').Replace('.', '_');
         var response = new TaskCompletionSource<(uint Code, Dictionary<string, VariantValue> Results)>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         // Subscribe before calling so a fast Response can't be missed.
-        using var watch = await WatchSignalAsync(PortalService, $"{PortalPath}/request/{sender}/{token}",
+        using var watch = await _bus.WatchSignalAsync(PortalService, $"{PortalPath}/request/{sender}/{token}",
             "org.freedesktop.portal.Request", "Response",
             (m, _) =>
             {
@@ -282,7 +304,7 @@ public sealed class KdePlatform : IPlatform
                     response.TrySetResult(value);
             });
 
-        await CallAsync(PortalService, PortalPath, @interface, member, signature, body(token));
+        await _bus.CallAsync(PortalService, PortalPath, @interface, member, signature, body(token));
         var (code, results) = await response.Task;
         return code switch
         {
@@ -339,53 +361,11 @@ public sealed class KdePlatform : IPlatform
             JsonSerializer.Serialize(new Dictionary<string, string> { ["restoreToken"] = token }));
     }
 
-    // --- D-Bus plumbing ---
-
-    private async Task<Connection> ConnectAsync()
-    {
-        if (_connection is null)
-        {
-            var connection = new Connection(Address.Session
-                ?? throw new InvalidOperationException("no D-Bus session bus address"));
-            await connection.ConnectAsync();
-            _connection = connection;
-        }
-        return _connection;
-    }
-
-    private MessageBuffer MethodCall(string destination, string path, string @interface, string member,
-        string? signature = null, BodyWriter? body = null)
-    {
-        var writer = _connection!.GetMessageWriter();
-        try
-        {
-            writer.WriteMethodCallHeader(destination, path, @interface, member, signature);
-            body?.Invoke(ref writer);
-            return writer.CreateMessage();
-        }
-        finally
-        {
-            writer.Dispose();
-        }
-    }
-
-    private Task CallAsync(string destination, string path, string @interface, string member,
-        string? signature = null, BodyWriter? body = null) =>
-        _connection!.CallMethodAsync(MethodCall(destination, path, @interface, member, signature, body));
-
-    /// <summary>Subscribes to a signal; the handler gets either an error or the decoded value.</summary>
-    private async Task<IDisposable> WatchSignalAsync<T>(string sender, string path, string @interface,
-        string member, MessageValueReader<T> reader, Action<Exception?, T> handler) =>
-        await _connection!.AddMatchAsync(
-            new MatchRule { Type = MessageType.Signal, Sender = sender, Path = path, Interface = @interface, Member = member },
-            reader, (e, value, _, _) => handler(e, value),
-            ObserverFlags.None, readerState: null, handlerState: null, emitOnCapturedContext: false);
-
     public void Dispose()
     {
         _hotkeyWatch?.Dispose();
         CloseSessionAsync().GetAwaiter().GetResult();
-        _connection?.Dispose();
+        _bus?.Dispose();
         _portalGate.Dispose();
     }
 }

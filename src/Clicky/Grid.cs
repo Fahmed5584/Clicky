@@ -13,7 +13,16 @@ public readonly record struct ScreenBounds(int X, int Y, int Width, int Height);
 public sealed record GridMonitor(int Index, int ScreenIndex, ScreenBounds Bounds, string Rows, string Cols);
 
 /// <summary>A chosen cell and the point to click, as fractions of the monitor's width and height.</summary>
-public readonly record struct Target(GridMonitor Monitor, int Row, int Col, double Fx, double Fy);
+public readonly record struct Target(GridMonitor Monitor, int Row, int Col, double Fx, double Fy)
+{
+    /// <summary>The point to click as a whole pixel in the monitor's native coordinates, kept on the monitor.</summary>
+    public (int X, int Y) ToScreenPixel()
+    {
+        var b = Monitor.Bounds;
+        return (b.X + Math.Clamp((int)Math.Round(Fx * b.Width), 0, b.Width - 1),
+                b.Y + Math.Clamp((int)Math.Round(Fy * b.Height), 0, b.Height - 1));
+    }
+}
 
 /// <summary>
 /// The labelled grid across all monitors. A label is a row character, a column character
